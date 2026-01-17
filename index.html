@@ -1,0 +1,633 @@
+<!doctype html>
+<html lang="id">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>IS THIS KARMA? — Horror 3D (Smoke + Glitch + Audio)</title>
+  <style>
+    html, body { margin: 0; height: 100%; background: #000; overflow: hidden; }
+    canvas { display:block; }
+    .hud{
+      position: fixed; left: 0; top: 0; right: 0;
+      display:flex; gap:10px; align-items:flex-start; justify-content:space-between;
+      padding: 10px 12px;
+      font: 12px/1.2 system-ui, -apple-system, Segoe UI, Roboto, Arial;
+      color: rgba(255,255,255,.68);
+      user-select:none; pointer-events:none;
+      text-shadow: 0 0 12px rgba(0,0,0,.9);
+    }
+    .pill{
+      pointer-events:auto;
+      display:inline-flex; gap:8px; align-items:center;
+      padding:8px 10px; border-radius: 999px;
+      background: rgba(255,255,255,.06);
+      border: 1px solid rgba(255,255,255,.08);
+      backdrop-filter: blur(6px);
+    }
+    .btn{
+      pointer-events:auto;
+      cursor:pointer;
+      padding:6px 10px; border-radius: 999px;
+      background: rgba(255,30,40,.12);
+      border: 1px solid rgba(255,30,40,.22);
+      color: rgba(255,255,255,.85);
+      font-weight: 600;
+    }
+    .btn:active{ transform: translateY(1px); }
+    .hint{ opacity:.65; max-width: 52ch; }
+    .small{ opacity:.55; font-size:11px; margin-top:6px; }
+  </style>
+</head>
+<body>
+  <div class="hud">
+    <div>
+      <div class="pill">
+        <div><b>IS THIS KARMA?</b> — realtime horror 3D</div>
+      </div>
+      <div class="hint small">Drag buat ganggu kamera. Klik “Audio” untuk ambience (browser butuh interaksi).</div>
+    </div>
+
+    <div class="pill">
+      <button id="audioBtn" class="btn" type="button">Audio: OFF</button>
+      <div class="small" id="status">Smoke: ON · Glitch: ON</div>
+    </div>
+  </div>
+
+  <script type="module">
+    import * as THREE from "https://unpkg.com/three@0.160.0/build/three.module.js";
+    import { FontLoader } from "https://unpkg.com/three@0.160.0/examples/jsm/loaders/FontLoader.js";
+    import { TextGeometry } from "https://unpkg.com/three@0.160.0/examples/jsm/geometries/TextGeometry.js";
+
+    import { EffectComposer } from "https://unpkg.com/three@0.160.0/examples/jsm/postprocessing/EffectComposer.js";
+    import { RenderPass } from "https://unpkg.com/three@0.160.0/examples/jsm/postprocessing/RenderPass.js";
+    import { UnrealBloomPass } from "https://unpkg.com/three@0.160.0/examples/jsm/postprocessing/UnrealBloomPass.js";
+    import { ShaderPass } from "https://unpkg.com/three@0.160.0/examples/jsm/postprocessing/ShaderPass.js";
+    import { RGBShiftShader } from "https://unpkg.com/three@0.160.0/examples/jsm/shaders/RGBShiftShader.js";
+    import { FilmPass } from "https://unpkg.com/three@0.160.0/examples/jsm/postprocessing/FilmPass.js";
+
+    // =========================
+    // RENDERER
+    // =========================
+    const renderer = new THREE.WebGLRenderer({ antialias: true, powerPreference: "high-performance" });
+    renderer.setPixelRatio(Math.min(devicePixelRatio, 2));
+    renderer.setSize(innerWidth, innerHeight);
+    renderer.toneMapping = THREE.ACESFilmicToneMapping;
+    renderer.toneMappingExposure = 0.9;
+    renderer.outputColorSpace = THREE.SRGBColorSpace;
+    document.body.appendChild(renderer.domElement);
+
+    // =========================
+    // SCENE
+    // =========================
+    const scene = new THREE.Scene();
+    scene.background = new THREE.Color(0x000000);
+    scene.fog = new THREE.FogExp2(0x000000, 0.09);
+
+    // =========================
+    // CAMERA
+    // =========================
+    const camera = new THREE.PerspectiveCamera(45, innerWidth / innerHeight, 0.1, 250);
+    camera.position.set(0, 2.1, 14);
+
+    // =========================
+    // LIGHTS (HORROR)
+    // =========================
+    scene.add(new THREE.AmbientLight(0x07070c, 0.25));
+
+    const key = new THREE.SpotLight(0xaad6ff, 40, 90, Math.PI * 0.22, 0.35, 1.25);
+    key.position.set(6, 10, 11);
+    key.target.position.set(0, 1.2, 0);
+    scene.add(key, key.target);
+
+    const back = new THREE.PointLight(0xff1218, 18, 70, 2);
+    back.position.set(-6, 2.5, -12);
+    scene.add(back);
+
+    const flicker = new THREE.PointLight(0xffcc88, 30, 60, 2);
+    flicker.position.set(0, 5.8, 8.5);
+    scene.add(flicker);
+
+    // Floor (wet)
+    const floor = new THREE.Mesh(
+      new THREE.PlaneGeometry(150, 150),
+      new THREE.MeshStandardMaterial({ color: 0x040408, metalness: 0.1, roughness: 0.12 })
+    );
+    floor.rotation.x = -Math.PI / 2;
+    floor.position.y = -1.25;
+    scene.add(floor);
+
+    // =========================
+    // DUST PARTICLES
+    // =========================
+    function makeDust(count = 2400) {
+      const g = new THREE.BufferGeometry();
+      const pos = new Float32Array(count * 3);
+      const spd = new Float32Array(count);
+      for (let i = 0; i < count; i++) {
+        pos[i*3+0] = (Math.random() - 0.5) * 34;
+        pos[i*3+1] = Math.random() * 12 - 1.2;
+        pos[i*3+2] = (Math.random() - 0.5) * 34;
+        spd[i] = 0.12 + Math.random() * 0.5;
+      }
+      g.setAttribute("position", new THREE.BufferAttribute(pos, 3));
+      g.setAttribute("speed", new THREE.BufferAttribute(spd, 1));
+      const m = new THREE.PointsMaterial({ color: 0xffffff, size: 0.03, transparent: true, opacity: 0.5, depthWrite: false });
+      const p = new THREE.Points(g, m);
+      p.frustumCulled = false;
+      return p;
+    }
+    const dust = makeDust();
+    scene.add(dust);
+
+    // =========================
+    // BLOOD FRESNEL GLOW
+    // =========================
+    const fresnelMat = new THREE.ShaderMaterial({
+      transparent: true,
+      depthWrite: false,
+      blending: THREE.AdditiveBlending,
+      uniforms: {
+        uColor: { value: new THREE.Color(0xff0e12) },
+        uPower: { value: 2.25 },
+        uIntensity: { value: 1.15 }
+      },
+      vertexShader: `
+        varying vec3 vN;
+        varying vec3 vV;
+        void main(){
+          vec4 mv = modelViewMatrix * vec4(position, 1.0);
+          vN = normalize(normalMatrix * normal);
+          vV = normalize(-mv.xyz);
+          gl_Position = projectionMatrix * mv;
+        }
+      `,
+      fragmentShader: `
+        varying vec3 vN;
+        varying vec3 vV;
+        uniform vec3 uColor;
+        uniform float uPower;
+        uniform float uIntensity;
+        void main(){
+          float fres = pow(1.0 - max(dot(vN, vV), 0.0), uPower);
+          float a = fres * uIntensity;
+          gl_FragColor = vec4(uColor, a);
+        }
+      `
+    });
+
+    // =========================
+    // FAKE VOLUMETRIC SMOKE (shader planes)
+    // =========================
+    const smokeMat = new THREE.ShaderMaterial({
+      transparent: true,
+      depthWrite: false,
+      blending: THREE.NormalBlending,
+      uniforms: {
+        uTime: { value: 0 },
+        uDensity: { value: 0.85 }, // makin tinggi makin tebal
+        uColor: { value: new THREE.Color(0x0a0a10) },
+        uEdge: { value: 0.6 }
+      },
+      vertexShader: `
+        varying vec2 vUv;
+        void main(){
+          vUv = uv;
+          vec4 mv = modelViewMatrix * vec4(position, 1.0);
+          gl_Position = projectionMatrix * mv;
+        }
+      `,
+      fragmentShader: `
+        varying vec2 vUv;
+        uniform float uTime;
+        uniform float uDensity;
+        uniform vec3 uColor;
+        uniform float uEdge;
+
+        // hash
+        float hash(vec2 p){
+          p = fract(p * vec2(123.34, 456.21));
+          p += dot(p, p + 45.32);
+          return fract(p.x * p.y);
+        }
+
+        // value noise
+        float vnoise(vec2 p){
+          vec2 i = floor(p);
+          vec2 f = fract(p);
+          float a = hash(i);
+          float b = hash(i + vec2(1.0, 0.0));
+          float c = hash(i + vec2(0.0, 1.0));
+          float d = hash(i + vec2(1.0, 1.0));
+          vec2 u = f*f*(3.0-2.0*f);
+          return mix(a, b, u.x) + (c - a)*u.y*(1.0 - u.x) + (d - b)*u.x*u.y;
+        }
+
+        float fbm(vec2 p){
+          float v = 0.0;
+          float a = 0.55;
+          for (int i=0;i<5;i++){
+            v += a * vnoise(p);
+            p *= 2.02;
+            a *= 0.55;
+          }
+          return v;
+        }
+
+        void main(){
+          // warp UV
+          vec2 uv = vUv;
+          vec2 p = uv * 3.5;
+
+          float t = uTime * 0.08;
+          p += vec2(t * 0.7, -t * 0.35);
+
+          // swirl-ish
+          float n = fbm(p + vec2(fbm(p + 3.1), fbm(p + 7.7)) * 1.2);
+          float n2 = fbm(p * 1.6 - vec2(t * 1.2, t * 0.6));
+
+          float smoke = smoothstep(0.35, 0.95, n * 0.65 + n2 * 0.55);
+          // dark edges to feel volumetric
+          float vign = smoothstep(0.0, 0.5, uv.x) * smoothstep(0.0, 0.5, uv.y) *
+                       smoothstep(0.0, 0.5, 1.0-uv.x) * smoothstep(0.0, 0.5, 1.0-uv.y);
+          smoke *= mix(uEdge, 1.0, vign);
+
+          // alpha: thick but not totally white
+          float a = smoke * 0.55 * uDensity;
+
+          // slightly colored smoke
+          vec3 col = mix(uColor, vec3(0.02,0.02,0.03), 0.35);
+
+          gl_FragColor = vec4(col, a);
+        }
+      `
+    });
+
+    const smokeGroup = new THREE.Group();
+    scene.add(smokeGroup);
+
+    // layered planes in front of camera area (parallax)
+    function addSmokePlane(z, scale, y){
+      const m = smokeMat.clone();
+      m.uniforms = THREE.UniformsUtils.clone(smokeMat.uniforms);
+      const mesh = new THREE.Mesh(new THREE.PlaneGeometry(20, 12), m);
+      mesh.position.set(0, y, z);
+      mesh.scale.set(scale, scale, 1);
+      smokeGroup.add(mesh);
+      return mesh;
+    }
+
+    const smokePlanes = [
+      addSmokePlane( 2.5, 1.25, 1.4),
+      addSmokePlane( 0.8, 1.45, 1.0),
+      addSmokePlane(-1.0, 1.65, 0.8),
+      addSmokePlane(-3.0, 1.85, 0.6),
+    ];
+
+    // =========================
+    // TEXT 3D
+    // =========================
+    const group = new THREE.Group();
+    group.position.y = 0.35;
+    scene.add(group);
+
+    let textMesh = null;
+    let glowMesh = null;
+
+    const loader = new FontLoader();
+    const fontURL = "https://unpkg.com/three@0.160.0/examples/fonts/helvetiker_bold.typeface.json";
+
+    loader.load(fontURL, (font) => {
+      const geo = new TextGeometry("IS THIS KARMA?", {
+        font,
+        size: 1.25,
+        height: 0.38,
+        curveSegments: 14,
+        bevelEnabled: true,
+        bevelThickness: 0.05,
+        bevelSize: 0.032,
+        bevelOffset: 0,
+        bevelSegments: 6,
+      });
+      geo.computeBoundingBox();
+      geo.center();
+
+      const mat = new THREE.MeshPhysicalMaterial({
+        color: 0x07070c,
+        metalness: 1.0,
+        roughness: 0.3,
+        clearcoat: 0.25,
+        clearcoatRoughness: 0.25,
+        emissive: new THREE.Color(0x110003),
+        emissiveIntensity: 0.55
+      });
+
+      textMesh = new THREE.Mesh(geo, mat);
+      group.add(textMesh);
+
+      glowMesh = new THREE.Mesh(geo.clone(), fresnelMat);
+      glowMesh.scale.set(1.03, 1.03, 1.03);
+      group.add(glowMesh);
+
+      // uneasy tilt
+      group.rotation.set(THREE.MathUtils.degToRad(-2.5), THREE.MathUtils.degToRad(7), THREE.MathUtils.degToRad(1.2));
+    });
+
+    // =========================
+    // POSTPROCESS
+    // =========================
+    const composer = new EffectComposer(renderer);
+    composer.addPass(new RenderPass(scene, camera));
+
+    const bloom = new UnrealBloomPass(
+      new THREE.Vector2(innerWidth, innerHeight),
+      0.85,  // strength
+      0.65,  // radius
+      0.28   // threshold
+    );
+    composer.addPass(bloom);
+
+    const rgb = new ShaderPass(RGBShiftShader);
+    rgb.uniforms["amount"].value = 0.002;
+    composer.addPass(rgb);
+
+    const film = new FilmPass(0.35, 0.45, 720, false);
+    composer.addPass(film);
+
+    // SCANLINE + GLITCH OVERLAY (custom pass)
+    const ScanGlitchShader = {
+      uniforms: {
+        tDiffuse: { value: null },
+        uTime: { value: 0 },
+        uStrength: { value: 0.35 },
+        uDrop: { value: 0.0 },
+      },
+      vertexShader: `
+        varying vec2 vUv;
+        void main(){
+          vUv = uv;
+          gl_Position = projectionMatrix * modelViewMatrix * vec4(position,1.0);
+        }
+      `,
+      fragmentShader: `
+        varying vec2 vUv;
+        uniform sampler2D tDiffuse;
+        uniform float uTime;
+        uniform float uStrength;
+        uniform float uDrop;
+
+        float hash(float n){ return fract(sin(n)*43758.5453); }
+        float hash2(vec2 p){ return fract(sin(dot(p, vec2(127.1,311.7)))*43758.5453); }
+
+        void main(){
+          vec2 uv = vUv;
+
+          // scanlines
+          float scan = sin((uv.y + uTime*0.35) * 1200.0) * 0.5 + 0.5;
+          float scan2 = sin((uv.y + uTime*0.12) * 500.0) * 0.5 + 0.5;
+          float scanMix = mix(scan, scan2, 0.5);
+
+          // occasional horizontal tear
+          float tear = step(0.985, hash(floor(uTime*12.0)));
+          float yBand = step(0.48, hash2(vec2(floor(uTime*3.0), 1.23))) * step(hash2(vec2(2.2, floor(uTime*3.0))), 0.55);
+          float band = tear * yBand;
+          float xShift = (hash(uTime*9.0) - 0.5) * 0.06 * band * uStrength;
+
+          uv.x += xShift;
+
+          // blocky noise mask
+          vec2 block = floor(uv * vec2(64.0, 36.0));
+          float bn = hash2(block + floor(uTime*10.0));
+          float blockMask = smoothstep(0.75, 0.98, bn) * uStrength;
+
+          // color
+          vec4 c = texture2D(tDiffuse, uv);
+
+          // darken with scanlines
+          float dark = 1.0 - (scanMix * 0.12 * uStrength);
+          c.rgb *= dark;
+
+          // add noisy “static”
+          float staticN = (hash2(uv * vec2(700.0, 400.0) + uTime*30.0) - 0.5) * 0.10;
+          c.rgb += staticN * blockMask;
+
+          // frame drop vibe: freeze-ish (we emulate by crushing brightness/contrast briefly)
+          c.rgb *= (1.0 - uDrop * 0.35);
+          c.rgb = mix(c.rgb, vec3(dot(c.rgb, vec3(0.299,0.587,0.114))), uDrop * 0.18);
+
+          gl_FragColor = c;
+        }
+      `
+    };
+
+    const scanPass = new ShaderPass(ScanGlitchShader);
+    scanPass.uniforms.uStrength.value = 0.42;
+    composer.addPass(scanPass);
+
+    // =========================
+    // INTERACTION (drag to disturb)
+    // =========================
+    let isDown = false, mx = 0, my = 0;
+    addEventListener("pointerdown", (e) => { isDown = true; mx = e.clientX; my = e.clientY; });
+    addEventListener("pointerup", () => { isDown = false; });
+    addEventListener("pointermove", (e) => {
+      if (!isDown) return;
+      const dx = (e.clientX - mx) / innerWidth;
+      const dy = (e.clientY - my) / innerHeight;
+      mx = e.clientX; my = e.clientY;
+      camera.position.x += dx * 2.0;
+      camera.position.y -= dy * 1.5;
+    });
+
+    // =========================
+    // RESIZE
+    // =========================
+    addEventListener("resize", () => {
+      camera.aspect = innerWidth / innerHeight;
+      camera.updateProjectionMatrix();
+      renderer.setSize(innerWidth, innerHeight);
+      composer.setSize(innerWidth, innerHeight);
+    });
+
+    // =========================
+    // AUDIO AMBIENCE (optional)
+    // =========================
+    const audioBtn = document.getElementById("audioBtn");
+    let audioOn = false;
+    let audioCtx = null;
+    let master = null;
+    let wind = null, rumble = null;
+    let scream = null;
+
+    function makeNoise(ctx){
+      const bufferSize = 2 * ctx.sampleRate;
+      const buffer = ctx.createBuffer(1, bufferSize, ctx.sampleRate);
+      const data = buffer.getChannelData(0);
+      for (let i=0;i<bufferSize;i++) data[i] = Math.random() * 2 - 1;
+      const src = ctx.createBufferSource();
+      src.buffer = buffer;
+      src.loop = true;
+      return src;
+    }
+
+    function startAudio(){
+      audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+      master = audioCtx.createGain();
+      master.gain.value = 0.0; // fade in
+      master.connect(audioCtx.destination);
+
+      // wind = filtered noise
+      const n1 = makeNoise(audioCtx);
+      const hp = audioCtx.createBiquadFilter();
+      hp.type = "highpass"; hp.frequency.value = 120;
+      const lp = audioCtx.createBiquadFilter();
+      lp.type = "lowpass"; lp.frequency.value = 650;
+      const g1 = audioCtx.createGain();
+      g1.gain.value = 0.18;
+
+      n1.connect(hp); hp.connect(lp); lp.connect(g1); g1.connect(master);
+      n1.start();
+      wind = { src:n1, g:g1, lp };
+
+      // rumble = low sine with wobble
+      const osc = audioCtx.createOscillator();
+      osc.type = "sine";
+      osc.frequency.value = 44;
+      const g2 = audioCtx.createGain();
+      g2.gain.value = 0.12;
+      osc.connect(g2); g2.connect(master);
+      osc.start();
+      rumble = { osc, g:g2 };
+
+      // occasional “whine/scream” (very subtle)
+      const osc2 = audioCtx.createOscillator();
+      osc2.type = "triangle";
+      osc2.frequency.value = 220;
+      const g3 = audioCtx.createGain();
+      g3.gain.value = 0.0;
+      osc2.connect(g3); g3.connect(master);
+      osc2.start();
+      scream = { osc:osc2, g:g3 };
+
+      // fade in master
+      master.gain.setTargetAtTime(0.8, audioCtx.currentTime, 0.25);
+    }
+
+    function stopAudio(){
+      if (!audioCtx) return;
+      master.gain.setTargetAtTime(0.0, audioCtx.currentTime, 0.2);
+      setTimeout(() => {
+        try { audioCtx.close(); } catch {}
+        audioCtx = null; master = null; wind = null; rumble = null; scream = null;
+      }, 400);
+    }
+
+    audioBtn.addEventListener("click", async () => {
+      audioOn = !audioOn;
+      audioBtn.textContent = audioOn ? "Audio: ON" : "Audio: OFF";
+      if (audioOn) startAudio(); else stopAudio();
+    });
+
+    // =========================
+    // HORROR ANIMATION LOOP (with frame-drop vibe)
+    // =========================
+    const clock = new THREE.Clock();
+
+    // frame drop: sometimes we skip renders (gives stutter)
+    function shouldDrop(t){
+      // small probability bursts
+      const p = (Math.sin(t * 0.9) > 0.995) ? 0.55 : 0.06;
+      return Math.random() < p;
+    }
+
+    function flickerCurve(t){
+      const s1 = Math.sin(t * 9.0) * 0.5 + 0.5;
+      const s2 = Math.sin(t * 31.0 + 1.7) * 0.5 + 0.5;
+      const s3 = Math.sin(t * 2.2) * 0.5 + 0.5;
+      return (0.25 + 0.75 * (s1 * 0.55 + s2 * 0.35 + s3 * 0.10));
+    }
+
+    function animate(){
+      requestAnimationFrame(animate);
+      const t = clock.getElapsedTime();
+
+      // update smoke time
+      for (const sp of smokePlanes) sp.material.uniforms.uTime.value = t;
+
+      // camera slow creep
+      const creep = Math.min(1, t / 10);
+      camera.position.z = 14 - creep * 5.8;
+
+      // micro handheld
+      camera.position.x += (Math.sin(t * 1.7) * 0.5 + Math.sin(t * 3.3) * 0.5) * 0.002;
+      camera.position.y += (Math.sin(t * 2.1) * 0.5) * 0.002;
+
+      camera.lookAt(0, 0.9, 0);
+
+      // flicker intensity
+      const f = flickerCurve(t);
+      flicker.intensity = 9 + 28 * f;
+
+      // spikes (hard flicker + glitch)
+      let spike = false;
+      if (Math.sin(t * 0.9) > 0.995) spike = true;
+
+      if (spike) {
+        flicker.intensity *= 0.12;
+        rgb.uniforms["amount"].value = 0.007;
+        bloom.strength = 1.55;
+        scanPass.uniforms.uStrength.value = 0.85;
+      } else {
+        rgb.uniforms["amount"].value = 0.002 + (1 - f) * 0.0015;
+        bloom.strength = 0.9 + (1 - f) * 0.35;
+        scanPass.uniforms.uStrength.value = 0.42 + (1 - f) * 0.18;
+      }
+
+      // text breathing + uneasy drift
+      group.position.y = 0.35 + Math.sin(t * 0.7) * 0.035;
+      group.rotation.y += Math.sin(t * 6.0) * 0.0007;
+      group.rotation.x += Math.sin(t * 4.2) * 0.00055;
+
+      // glow intensity follows flicker
+      fresnelMat.uniforms.uIntensity.value = 0.85 + (1 - f) * 1.65;
+
+      // dust float
+      const a = dust.geometry.attributes;
+      const p = a.position.array;
+      const sp = a.speed.array;
+      for (let i = 0; i < sp.length; i++) {
+        p[i*3+1] += sp[i] * 0.0027;
+        p[i*3+0] += Math.sin(t * 0.2 + i) * 0.00015;
+        if (p[i*3+1] > 10) p[i*3+1] = -1.2;
+      }
+      a.position.needsUpdate = true;
+
+      // fog density breathing
+      scene.fog.density = 0.085 + Math.sin(t * 0.32) * 0.012;
+
+      // scan/glitch time
+      scanPass.uniforms.uTime.value = t;
+
+      // frame drop vibe (skip render sometimes + mark uDrop)
+      const drop = shouldDrop(t);
+      scanPass.uniforms.uDrop.value = drop ? 1.0 : 0.0;
+
+      // AUDIO react (optional): tie to flicker/spike
+      if (audioOn && audioCtx && master) {
+        // wind filter moves
+        wind.lp.frequency.setTargetAtTime(520 + (1 - f) * 420, audioCtx.currentTime, 0.08);
+        // rumble wobble
+        rumble.osc.frequency.setTargetAtTime(42 + (1 - f) * 10, audioCtx.currentTime, 0.1);
+
+        // occasional eerie “whine”
+        const targetWhine = spike ? 0.08 : 0.0;
+        scream.g.gain.setTargetAtTime(targetWhine, audioCtx.currentTime, 0.05);
+        scream.osc.frequency.setTargetAtTime(spike ? 180 + Math.random()*180 : 220, audioCtx.currentTime, 0.05);
+      }
+
+      if (!drop) composer.render();
+      // kalau drop: kita sengaja tidak render (stutter)
+    }
+    animate();
+  </script>
+</body>
+</html>
