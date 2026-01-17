@@ -14,7 +14,7 @@
       display:flex; gap:10px; align-items:flex-start; justify-content:space-between;
       padding: 10px 12px;
       font: 12px/1.2 system-ui, -apple-system, Segoe UI, Roboto, Arial;
-      color: rgba(255,255,255,.72);
+      color: rgba(255,255,255,.78);
       user-select:none;
       pointer-events:auto;
       text-shadow: 0 0 12px rgba(0,0,0,.9);
@@ -24,7 +24,7 @@
       display:inline-flex; gap:8px; align-items:center;
       padding:8px 10px; border-radius: 999px;
       background: rgba(255,255,255,.06);
-      border: 1px solid rgba(255,255,255,.08);
+      border: 1px solid rgba(255,255,255,.10);
       backdrop-filter: blur(6px);
       pointer-events:auto;
     }
@@ -32,12 +32,12 @@
       cursor:pointer;
       padding:6px 10px; border-radius: 999px;
       background: rgba(255,30,40,.12);
-      border: 1px solid rgba(255,30,40,.22);
-      color: rgba(255,255,255,.9);
+      border: 1px solid rgba(255,30,40,.25);
+      color: rgba(255,255,255,.92);
       font-weight: 700;
     }
     .btn:active{ transform: translateY(1px); }
-    .small{ opacity:.6; font-size:11px; max-width: 62ch; }
+    .small{ opacity:.65; font-size:11px; max-width: 62ch; }
 
     #errorBox{
       position: fixed; left: 12px; right: 12px; bottom: 12px;
@@ -53,7 +53,7 @@
     }
   </style>
 
-  <!-- ✅ INI YANG FIX: importmap untuk resolve "three" -->
+  <!-- Importmap supaya "three" kebaca oleh addons/postprocessing -->
   <script type="importmap">
   {
     "imports": {
@@ -74,522 +74,332 @@
     </div>
     <div class="pill">
       <button id="audioBtn" class="btn" type="button">Audio: OFF</button>
-      <div class="small" id="status">Smoke: ON · Glitch: ON</div>
+      <div class="small" id="status">Loading font…</div>
     </div>
   </div>
 
   <div id="errorBox"></div>
 
   <script type="module">
+    import * as THREE from "three";
+    import { FontLoader } from "three/addons/loaders/FontLoader.js";
+    import { TextGeometry } from "three/addons/geometries/TextGeometry.js";
+
+    import { EffectComposer } from "three/addons/postprocessing/EffectComposer.js";
+    import { RenderPass } from "three/addons/postprocessing/RenderPass.js";
+    import { UnrealBloomPass } from "three/addons/postprocessing/UnrealBloomPass.js";
+    import { ShaderPass } from "three/addons/postprocessing/ShaderPass.js";
+    import { RGBShiftShader } from "three/addons/shaders/RGBShiftShader.js";
+    import { FilmPass } from "three/addons/postprocessing/FilmPass.js";
+
     const errorBox = document.getElementById("errorBox");
+    const statusEl = document.getElementById("status");
     const showError = (msg) => {
       console.error(msg);
       errorBox.style.display = "block";
       errorBox.textContent = String(msg);
+      statusEl.textContent = "ERROR (lihat box merah)";
     };
-
     window.addEventListener("error", (e) => showError("JS Error: " + (e?.message || e)));
     window.addEventListener("unhandledrejection", (e) => showError("Promise Rejection: " + (e?.reason || e)));
 
-    try {
-      import * as THREE from "three";
-      import { FontLoader } from "three/addons/loaders/FontLoader.js";
-      import { TextGeometry } from "three/addons/geometries/TextGeometry.js";
+    // =========================
+    // Renderer
+    // =========================
+    const renderer = new THREE.WebGLRenderer({ antialias: true, powerPreference: "high-performance" });
+    renderer.setPixelRatio(Math.min(devicePixelRatio, 2));
+    renderer.setSize(innerWidth, innerHeight);
+    renderer.toneMapping = THREE.ACESFilmicToneMapping;
+    renderer.toneMappingExposure = 1.15; // ✅ naikkan biar tidak “mati”
+    renderer.outputColorSpace = THREE.SRGBColorSpace;
+    document.body.appendChild(renderer.domElement);
 
-      import { EffectComposer } from "three/addons/postprocessing/EffectComposer.js";
-      import { RenderPass } from "three/addons/postprocessing/RenderPass.js";
-      import { UnrealBloomPass } from "three/addons/postprocessing/UnrealBloomPass.js";
-      import { ShaderPass } from "three/addons/postprocessing/ShaderPass.js";
-      import { RGBShiftShader } from "three/addons/shaders/RGBShiftShader.js";
-      import { FilmPass } from "three/addons/postprocessing/FilmPass.js";
+    // =========================
+    // Scene / Camera
+    // =========================
+    const scene = new THREE.Scene();
+    scene.background = new THREE.Color(0x000000);
+    scene.fog = new THREE.FogExp2(0x000000, 0.05); // ✅ lebih ringan dulu
 
-      // =========================
-      // Renderer
-      // =========================
-      const renderer = new THREE.WebGLRenderer({ antialias: true, powerPreference: "high-performance" });
-      renderer.setPixelRatio(Math.min(devicePixelRatio, 2));
+    const camera = new THREE.PerspectiveCamera(45, innerWidth / innerHeight, 0.1, 250);
+    camera.position.set(0, 2.0, 14);
+
+    // =========================
+    // Lights (lebih kelihatan)
+    // =========================
+    scene.add(new THREE.AmbientLight(0x12121a, 0.45));
+
+    const key = new THREE.SpotLight(0xaad6ff, 65, 120, Math.PI * 0.25, 0.35, 1.25);
+    key.position.set(6, 10, 11);
+    key.target.position.set(0, 1.1, 0);
+    scene.add(key, key.target);
+
+    const back = new THREE.PointLight(0xff1218, 30, 90, 2);
+    back.position.set(-6, 2.5, -12);
+    scene.add(back);
+
+    const flicker = new THREE.PointLight(0xffcc88, 45, 80, 2);
+    flicker.position.set(0, 5.8, 8.5);
+    scene.add(flicker);
+
+    // Floor
+    const floor = new THREE.Mesh(
+      new THREE.PlaneGeometry(150, 150),
+      new THREE.MeshStandardMaterial({ color: 0x0a0a12, metalness: 0.1, roughness: 0.18 })
+    );
+    floor.rotation.x = -Math.PI / 2;
+    floor.position.y = -1.25;
+    scene.add(floor);
+
+    // ✅ DEBUG: kotak terang supaya pasti kelihatan kalau render jalan
+    const debugBox = new THREE.Mesh(
+      new THREE.BoxGeometry(1, 1, 1),
+      new THREE.MeshStandardMaterial({ color: 0x00ff88, emissive: 0x00ff88, emissiveIntensity: 2 })
+    );
+    debugBox.position.set(-4.2, 1.0, 0);
+    scene.add(debugBox);
+
+    // =========================
+    // Text group + placeholder terang
+    // =========================
+    const group = new THREE.Group();
+    group.position.y = 0.35;
+    scene.add(group);
+
+    const placeholder = new THREE.Mesh(
+      new THREE.BoxGeometry(7.2, 1.8, 0.5),
+      new THREE.MeshStandardMaterial({
+        color: 0x11111b,
+        metalness: 0.2,
+        roughness: 0.35,
+        emissive: 0x330008,
+        emissiveIntensity: 1.6
+      })
+    );
+    placeholder.position.y = 0.85;
+    group.add(placeholder);
+
+    // Fresnel glow (blood rim)
+    const fresnelMat = new THREE.ShaderMaterial({
+      transparent: true,
+      depthWrite: false,
+      blending: THREE.AdditiveBlending,
+      uniforms: {
+        uColor: { value: new THREE.Color(0xff0e12) },
+        uPower: { value: 2.25 },
+        uIntensity: { value: 1.25 }
+      },
+      vertexShader: `
+        varying vec3 vN;
+        varying vec3 vV;
+        void main(){
+          vec4 mv = modelViewMatrix * vec4(position, 1.0);
+          vN = normalize(normalMatrix * normal);
+          vV = normalize(-mv.xyz);
+          gl_Position = projectionMatrix * mv;
+        }
+      `,
+      fragmentShader: `
+        varying vec3 vN;
+        varying vec3 vV;
+        uniform vec3 uColor;
+        uniform float uPower;
+        uniform float uIntensity;
+        void main(){
+          float fres = pow(1.0 - max(dot(vN, vV), 0.0), uPower);
+          float a = fres * uIntensity;
+          gl_FragColor = vec4(uColor, a);
+        }
+      `
+    });
+
+    // ✅ Font load (ini yang bikin teks muncul)
+    const fontURL = "https://cdn.jsdelivr.net/npm/three@0.160.0/examples/fonts/helvetiker_bold.typeface.json";
+
+    new FontLoader().load(
+      fontURL,
+      (font) => {
+        statusEl.textContent = "Font loaded ✅";
+
+        group.remove(placeholder);
+
+        const geo = new TextGeometry("IS THIS KARMA?", {
+          font,
+          size: 1.25,
+          height: 0.40,
+          curveSegments: 14,
+          bevelEnabled: true,
+          bevelThickness: 0.05,
+          bevelSize: 0.032,
+          bevelSegments: 6,
+        });
+        geo.center();
+
+        const mat = new THREE.MeshPhysicalMaterial({
+          color: 0x0b0b14,
+          metalness: 1.0,
+          roughness: 0.32,
+          clearcoat: 0.25,
+          clearcoatRoughness: 0.25,
+          emissive: new THREE.Color(0x220007),
+          emissiveIntensity: 1.0
+        });
+
+        const textMesh = new THREE.Mesh(geo, mat);
+        group.add(textMesh);
+
+        const glowMesh = new THREE.Mesh(geo.clone(), fresnelMat);
+        glowMesh.scale.set(1.03, 1.03, 1.03);
+        group.add(glowMesh);
+
+        group.rotation.set(THREE.MathUtils.degToRad(-2.5), THREE.MathUtils.degToRad(7), THREE.MathUtils.degToRad(1.2));
+      },
+      undefined,
+      (err) => showError("Gagal load font JSON.\nKemungkinan CDN keblok / offline.\n\n" + err)
+    );
+
+    // =========================
+    // Postprocessing
+    // =========================
+    const composer = new EffectComposer(renderer);
+    composer.addPass(new RenderPass(scene, camera));
+
+    const bloom = new UnrealBloomPass(new THREE.Vector2(innerWidth, innerHeight), 0.9, 0.7, 0.25);
+    composer.addPass(bloom);
+
+    const rgb = new ShaderPass(RGBShiftShader);
+    rgb.uniforms.amount.value = 0.0018;
+    composer.addPass(rgb);
+
+    const film = new FilmPass(0.25, 0.35, 720, false);
+    composer.addPass(film);
+
+    // =========================
+    // Interaction (drag)
+    // =========================
+    let isDown = false, mx = 0, my = 0;
+    addEventListener("pointerdown", (e) => { isDown = true; mx = e.clientX; my = e.clientY; });
+    addEventListener("pointerup", () => { isDown = false; });
+    addEventListener("pointermove", (e) => {
+      if (!isDown) return;
+      const dx = (e.clientX - mx) / innerWidth;
+      const dy = (e.clientY - my) / innerHeight;
+      mx = e.clientX; my = e.clientY;
+      camera.position.x += dx * 2.0;
+      camera.position.y -= dy * 1.5;
+    });
+
+    addEventListener("resize", () => {
+      camera.aspect = innerWidth / innerHeight;
+      camera.updateProjectionMatrix();
       renderer.setSize(innerWidth, innerHeight);
-      renderer.toneMapping = THREE.ACESFilmicToneMapping;
-      renderer.toneMappingExposure = 0.9;
-      renderer.outputColorSpace = THREE.SRGBColorSpace;
-      document.body.appendChild(renderer.domElement);
-
-      // =========================
-      // Scene / Camera
-      // =========================
-      const scene = new THREE.Scene();
-      scene.background = new THREE.Color(0x000000);
-      scene.fog = new THREE.FogExp2(0x000000, 0.09);
-
-      const camera = new THREE.PerspectiveCamera(45, innerWidth / innerHeight, 0.1, 250);
-      camera.position.set(0, 2.1, 14);
-
-      // =========================
-      // Lights
-      // =========================
-      scene.add(new THREE.AmbientLight(0x07070c, 0.25));
-
-      const key = new THREE.SpotLight(0xaad6ff, 40, 90, Math.PI * 0.22, 0.35, 1.25);
-      key.position.set(6, 10, 11);
-      key.target.position.set(0, 1.2, 0);
-      scene.add(key, key.target);
-
-      const back = new THREE.PointLight(0xff1218, 18, 70, 2);
-      back.position.set(-6, 2.5, -12);
-      scene.add(back);
-
-      const flicker = new THREE.PointLight(0xffcc88, 30, 60, 2);
-      flicker.position.set(0, 5.8, 8.5);
-      scene.add(flicker);
-
-      // Floor
-      const floor = new THREE.Mesh(
-        new THREE.PlaneGeometry(150, 150),
-        new THREE.MeshStandardMaterial({ color: 0x040408, metalness: 0.1, roughness: 0.12 })
-      );
-      floor.rotation.x = -Math.PI / 2;
-      floor.position.y = -1.25;
-      scene.add(floor);
-
-      // =========================
-      // Dust
-      // =========================
-      function makeDust(count = 2400) {
-        const g = new THREE.BufferGeometry();
-        const pos = new Float32Array(count * 3);
-        const spd = new Float32Array(count);
-        for (let i = 0; i < count; i++) {
-          pos[i*3+0] = (Math.random() - 0.5) * 34;
-          pos[i*3+1] = Math.random() * 12 - 1.2;
-          pos[i*3+2] = (Math.random() - 0.5) * 34;
-          spd[i] = 0.12 + Math.random() * 0.5;
-        }
-        g.setAttribute("position", new THREE.BufferAttribute(pos, 3));
-        g.setAttribute("speed", new THREE.BufferAttribute(spd, 1));
-        const m = new THREE.PointsMaterial({ color: 0xffffff, size: 0.03, transparent: true, opacity: 0.5, depthWrite: false });
-        const p = new THREE.Points(g, m);
-        p.frustumCulled = false;
-        return p;
-      }
-      const dust = makeDust();
-      scene.add(dust);
-
-      // =========================
-      // Fresnel glow
-      // =========================
-      const fresnelMat = new THREE.ShaderMaterial({
-        transparent: true,
-        depthWrite: false,
-        blending: THREE.AdditiveBlending,
-        uniforms: {
-          uColor: { value: new THREE.Color(0xff0e12) },
-          uPower: { value: 2.25 },
-          uIntensity: { value: 1.15 }
-        },
-        vertexShader: `
-          varying vec3 vN;
-          varying vec3 vV;
-          void main(){
-            vec4 mv = modelViewMatrix * vec4(position, 1.0);
-            vN = normalize(normalMatrix * normal);
-            vV = normalize(-mv.xyz);
-            gl_Position = projectionMatrix * mv;
-          }
-        `,
-        fragmentShader: `
-          varying vec3 vN;
-          varying vec3 vV;
-          uniform vec3 uColor;
-          uniform float uPower;
-          uniform float uIntensity;
-          void main(){
-            float fres = pow(1.0 - max(dot(vN, vV), 0.0), uPower);
-            float a = fres * uIntensity;
-            gl_FragColor = vec4(uColor, a);
-          }
-        `
-      });
-
-      // =========================
-      // Fake volumetric smoke (shader planes)
-      // =========================
-      const baseSmokeMat = new THREE.ShaderMaterial({
-        transparent: true,
-        depthWrite: false,
-        uniforms: {
-          uTime: { value: 0 },
-          uDensity: { value: 0.95 },
-          uColor: { value: new THREE.Color(0x0a0a10) },
-          uEdge: { value: 0.6 }
-        },
-        vertexShader: `
-          varying vec2 vUv;
-          void main(){
-            vUv = uv;
-            gl_Position = projectionMatrix * modelViewMatrix * vec4(position,1.0);
-          }
-        `,
-        fragmentShader: `
-          varying vec2 vUv;
-          uniform float uTime;
-          uniform float uDensity;
-          uniform vec3 uColor;
-          uniform float uEdge;
-
-          float hash(vec2 p){
-            p = fract(p * vec2(123.34, 456.21));
-            p += dot(p, p + 45.32);
-            return fract(p.x * p.y);
-          }
-          float vnoise(vec2 p){
-            vec2 i = floor(p);
-            vec2 f = fract(p);
-            float a = hash(i);
-            float b = hash(i + vec2(1.0, 0.0));
-            float c = hash(i + vec2(0.0, 1.0));
-            float d = hash(i + vec2(1.0, 1.0));
-            vec2 u = f*f*(3.0-2.0*f);
-            return mix(a, b, u.x) + (c - a)*u.y*(1.0 - u.x) + (d - b)*u.x*u.y;
-          }
-          float fbm(vec2 p){
-            float v = 0.0;
-            float a = 0.55;
-            for (int i=0;i<5;i++){
-              v += a * vnoise(p);
-              p *= 2.02;
-              a *= 0.55;
-            }
-            return v;
-          }
-          void main(){
-            vec2 uv = vUv;
-            vec2 p = uv * 3.5;
-            float t = uTime * 0.08;
-            p += vec2(t * 0.7, -t * 0.35);
-
-            float n = fbm(p + vec2(fbm(p + 3.1), fbm(p + 7.7)) * 1.2);
-            float n2 = fbm(p * 1.6 - vec2(t * 1.2, t * 0.6));
-
-            float smoke = smoothstep(0.35, 0.95, n * 0.65 + n2 * 0.55);
-
-            float vign = smoothstep(0.0, 0.5, uv.x) * smoothstep(0.0, 0.5, uv.y) *
-                         smoothstep(0.0, 0.5, 1.0-uv.x) * smoothstep(0.0, 0.5, 1.0-uv.y);
-            smoke *= mix(uEdge, 1.0, vign);
-
-            float a = smoke * 0.55 * uDensity;
-            vec3 col = mix(uColor, vec3(0.02,0.02,0.03), 0.35);
-            gl_FragColor = vec4(col, a);
-          }
-        `
-      });
-
-      const smokeGroup = new THREE.Group();
-      scene.add(smokeGroup);
-
-      function addSmokePlane(z, scale, y){
-        const m = baseSmokeMat.clone();
-        m.uniforms = THREE.UniformsUtils.clone(baseSmokeMat.uniforms);
-        const mesh = new THREE.Mesh(new THREE.PlaneGeometry(20, 12), m);
-        mesh.position.set(0, y, z);
-        mesh.scale.set(scale, scale, 1);
-        smokeGroup.add(mesh);
-        return mesh;
-      }
-
-      const smokePlanes = [
-        addSmokePlane( 2.5, 1.25, 1.4),
-        addSmokePlane( 0.8, 1.45, 1.0),
-        addSmokePlane(-1.0, 1.65, 0.8),
-        addSmokePlane(-3.0, 1.85, 0.6),
-      ];
-
-      // =========================
-      // Text group + placeholder
-      // =========================
-      const group = new THREE.Group();
-      group.position.y = 0.35;
-      scene.add(group);
-
-      const placeholder = new THREE.Mesh(
-        new THREE.BoxGeometry(6.5, 1.5, 0.4),
-        new THREE.MeshStandardMaterial({ color: 0x06060b, metalness: 1, roughness: 0.35, emissive: 0x110003, emissiveIntensity: 0.4 })
-      );
-      placeholder.position.y = 0.8;
-      group.add(placeholder);
-
-      const fontURL = "https://cdn.jsdelivr.net/npm/three@0.160.0/examples/fonts/helvetiker_bold.typeface.json";
-      new FontLoader().load(
-        fontURL,
-        (font) => {
-          group.remove(placeholder);
-
-          const geo = new TextGeometry("IS THIS KARMA?", {
-            font,
-            size: 1.25,
-            height: 0.38,
-            curveSegments: 14,
-            bevelEnabled: true,
-            bevelThickness: 0.05,
-            bevelSize: 0.032,
-            bevelSegments: 6,
-          });
-          geo.center();
-
-          const mat = new THREE.MeshPhysicalMaterial({
-            color: 0x07070c,
-            metalness: 1.0,
-            roughness: 0.3,
-            clearcoat: 0.25,
-            clearcoatRoughness: 0.25,
-            emissive: new THREE.Color(0x110003),
-            emissiveIntensity: 0.55
-          });
-
-          const textMesh = new THREE.Mesh(geo, mat);
-          group.add(textMesh);
-
-          const glowMesh = new THREE.Mesh(geo.clone(), fresnelMat);
-          glowMesh.scale.set(1.03, 1.03, 1.03);
-          group.add(glowMesh);
-
-          group.rotation.set(THREE.MathUtils.degToRad(-2.5), THREE.MathUtils.degToRad(7), THREE.MathUtils.degToRad(1.2));
-        },
-        undefined,
-        (err) => showError("Gagal load font.\n" + err)
-      );
-
-      // =========================
-      // Postprocessing
-      // =========================
-      const composer = new EffectComposer(renderer);
-      composer.addPass(new RenderPass(scene, camera));
-
-      const bloom = new UnrealBloomPass(new THREE.Vector2(innerWidth, innerHeight), 0.85, 0.65, 0.28);
-      composer.addPass(bloom);
-
-      const rgb = new ShaderPass(RGBShiftShader);
-      rgb.uniforms.amount.value = 0.002;
-      composer.addPass(rgb);
-
-      const film = new FilmPass(0.35, 0.45, 720, false);
-      composer.addPass(film);
-
-      const ScanGlitchShader = {
-        uniforms: { tDiffuse: { value: null }, uTime: { value: 0 }, uStrength: { value: 0.45 }, uDrop: { value: 0.0 } },
-        vertexShader: `varying vec2 vUv; void main(){ vUv=uv; gl_Position=projectionMatrix*modelViewMatrix*vec4(position,1.0);} `,
-        fragmentShader: `
-          varying vec2 vUv;
-          uniform sampler2D tDiffuse;
-          uniform float uTime;
-          uniform float uStrength;
-          uniform float uDrop;
-
-          float hash(float n){ return fract(sin(n)*43758.5453); }
-          float hash2(vec2 p){ return fract(sin(dot(p, vec2(127.1,311.7)))*43758.5453); }
-
-          void main(){
-            vec2 uv = vUv;
-
-            float scan = sin((uv.y + uTime*0.35) * 1200.0) * 0.5 + 0.5;
-            float scan2 = sin((uv.y + uTime*0.12) * 500.0) * 0.5 + 0.5;
-            float scanMix = mix(scan, scan2, 0.5);
-
-            float tear = step(0.985, hash(floor(uTime*12.0)));
-            vec2 block = floor(uv * vec2(64.0, 36.0));
-            float bn = hash2(block + floor(uTime*10.0));
-            float blockMask = smoothstep(0.75, 0.98, bn) * uStrength;
-
-            float band = tear * step(0.7, hash2(vec2(floor(uTime*3.0), 1.23)));
-            float xShift = (hash(uTime*9.0) - 0.5) * 0.06 * band * uStrength;
-            uv.x += xShift;
-
-            vec4 c = texture2D(tDiffuse, uv);
-
-            float dark = 1.0 - (scanMix * 0.12 * uStrength);
-            c.rgb *= dark;
-
-            float staticN = (hash2(uv * vec2(700.0, 400.0) + uTime*30.0) - 0.5) * 0.10;
-            c.rgb += staticN * blockMask;
-
-            c.rgb *= (1.0 - uDrop * 0.35);
-            c.rgb = mix(c.rgb, vec3(dot(c.rgb, vec3(0.299,0.587,0.114))), uDrop * 0.18);
-
-            gl_FragColor = c;
-          }
-        `
-      };
-
-      const scanPass = new ShaderPass(ScanGlitchShader);
-      composer.addPass(scanPass);
-
-      // =========================
-      // Interaction (drag)
-      // =========================
-      let isDown = false, mx = 0, my = 0;
-      addEventListener("pointerdown", (e) => { isDown = true; mx = e.clientX; my = e.clientY; });
-      addEventListener("pointerup", () => { isDown = false; });
-      addEventListener("pointermove", (e) => {
-        if (!isDown) return;
-        const dx = (e.clientX - mx) / innerWidth;
-        const dy = (e.clientY - my) / innerHeight;
-        mx = e.clientX; my = e.clientY;
-        camera.position.x += dx * 2.0;
-        camera.position.y -= dy * 1.5;
-      });
-
-      // Resize
-      addEventListener("resize", () => {
-        camera.aspect = innerWidth / innerHeight;
-        camera.updateProjectionMatrix();
-        renderer.setSize(innerWidth, innerHeight);
-        composer.setSize(innerWidth, innerHeight);
-      });
-
-      // =========================
-      // Audio (optional)
-      // =========================
-      const audioBtn = document.getElementById("audioBtn");
-      let audioOn = false;
-      let audioCtx = null, master = null, wind = null, rumble = null, scream = null;
-
-      function makeNoise(ctx){
-        const bufferSize = 2 * ctx.sampleRate;
-        const buffer = ctx.createBuffer(1, bufferSize, ctx.sampleRate);
-        const data = buffer.getChannelData(0);
-        for (let i=0;i<bufferSize;i++) data[i] = Math.random() * 2 - 1;
-        const src = ctx.createBufferSource();
-        src.buffer = buffer;
-        src.loop = true;
-        return src;
-      }
-
-      function startAudio(){
-        audioCtx = new (window.AudioContext || window.webkitAudioContext)();
-        master = audioCtx.createGain();
-        master.gain.value = 0.0;
-        master.connect(audioCtx.destination);
-
-        const n1 = makeNoise(audioCtx);
-        const hp = audioCtx.createBiquadFilter(); hp.type = "highpass"; hp.frequency.value = 120;
-        const lp = audioCtx.createBiquadFilter(); lp.type = "lowpass"; lp.frequency.value = 650;
-        const g1 = audioCtx.createGain(); g1.gain.value = 0.18;
-        n1.connect(hp); hp.connect(lp); lp.connect(g1); g1.connect(master);
-        n1.start();
-        wind = { lp };
-
-        const osc = audioCtx.createOscillator();
-        osc.type = "sine"; osc.frequency.value = 44;
-        const g2 = audioCtx.createGain(); g2.gain.value = 0.12;
-        osc.connect(g2); g2.connect(master);
-        osc.start();
-        rumble = { osc };
-
-        const osc2 = audioCtx.createOscillator();
-        osc2.type = "triangle"; osc2.frequency.value = 220;
-        const g3 = audioCtx.createGain(); g3.gain.value = 0.0;
-        osc2.connect(g3); g3.connect(master);
-        osc2.start();
-        scream = { osc: osc2, g: g3 };
-
-        master.gain.setTargetAtTime(0.8, audioCtx.currentTime, 0.25);
-      }
-
-      function stopAudio(){
-        if (!audioCtx) return;
-        master.gain.setTargetAtTime(0.0, audioCtx.currentTime, 0.2);
-        setTimeout(() => { try { audioCtx.close(); } catch {} audioCtx = null; }, 400);
-      }
-
-      audioBtn.addEventListener("click", () => {
-        audioOn = !audioOn;
-        audioBtn.textContent = audioOn ? "Audio: ON" : "Audio: OFF";
-        if (audioOn) startAudio(); else stopAudio();
-      });
-
-      // =========================
-      // Animation loop (frame drop vibe)
-      // =========================
-      const clock = new THREE.Clock();
-
-      function shouldDrop(t){
-        const p = (Math.sin(t * 0.9) > 0.995) ? 0.55 : 0.06;
-        return Math.random() < p;
-      }
-      function flickerCurve(t){
-        const s1 = Math.sin(t * 9.0) * 0.5 + 0.5;
-        const s2 = Math.sin(t * 31.0 + 1.7) * 0.5 + 0.5;
-        const s3 = Math.sin(t * 2.2) * 0.5 + 0.5;
-        return (0.25 + 0.75 * (s1 * 0.55 + s2 * 0.35 + s3 * 0.10));
-      }
-
-      function animate(){
-        requestAnimationFrame(animate);
-        const t = clock.getElapsedTime();
-
-        for (const sp of smokePlanes) sp.material.uniforms.uTime.value = t;
-
-        const creep = Math.min(1, t / 10);
-        camera.position.z = 14 - creep * 5.8;
-
-        camera.position.x += (Math.sin(t * 1.7) + Math.sin(t * 3.3)) * 0.001;
-        camera.position.y += (Math.sin(t * 2.1)) * 0.001;
-        camera.lookAt(0, 0.9, 0);
-
-        const f = flickerCurve(t);
-        flicker.intensity = 9 + 28 * f;
-
-        const spike = (Math.sin(t * 0.9) > 0.995);
-        if (spike) {
-          flicker.intensity *= 0.12;
-          rgb.uniforms.amount.value = 0.007;
-          bloom.strength = 1.55;
-          scanPass.uniforms.uStrength.value = 0.9;
-        } else {
-          rgb.uniforms.amount.value = 0.002 + (1 - f) * 0.0015;
-          bloom.strength = 0.9 + (1 - f) * 0.35;
-          scanPass.uniforms.uStrength.value = 0.45 + (1 - f) * 0.18;
-        }
-
-        group.position.y = 0.35 + Math.sin(t * 0.7) * 0.035;
-        group.rotation.y += Math.sin(t * 6.0) * 0.0007;
-        group.rotation.x += Math.sin(t * 4.2) * 0.00055;
-
-        fresnelMat.uniforms.uIntensity.value = 0.85 + (1 - f) * 1.65;
-
-        const a = dust.geometry.attributes;
-        const p = a.position.array;
-        const sp = a.speed.array;
-        for (let i = 0; i < sp.length; i++) {
-          p[i*3+1] += sp[i] * 0.0027;
-          p[i*3+0] += Math.sin(t * 0.2 + i) * 0.00015;
-          if (p[i*3+1] > 10) p[i*3+1] = -1.2;
-        }
-        a.position.needsUpdate = true;
-
-        scene.fog.density = 0.085 + Math.sin(t * 0.32) * 0.012;
-
-        scanPass.uniforms.uTime.value = t;
-
-        const drop = shouldDrop(t);
-        scanPass.uniforms.uDrop.value = drop ? 1.0 : 0.0;
-
-        if (audioOn && audioCtx && master && wind && rumble && scream) {
-          wind.lp.frequency.setTargetAtTime(520 + (1 - f) * 420, audioCtx.currentTime, 0.08);
-          rumble.osc.frequency.setTargetAtTime(42 + (1 - f) * 10, audioCtx.currentTime, 0.1);
-
-          const targetWhine = spike ? 0.08 : 0.0;
-          scream.g.gain.setTargetAtTime(targetWhine, audioCtx.currentTime, 0.05);
-          scream.osc.frequency.setTargetAtTime(spike ? 180 + Math.random()*180 : 220, audioCtx.currentTime, 0.05);
-        }
-
-        if (!drop) composer.render();
-      }
-
-      animate();
-
-    } catch (e) {
-      showError("Gagal init Three.js.\n\n" + e);
+      composer.setSize(innerWidth, innerHeight);
+    });
+
+    // =========================
+    // Audio (optional) — sama seperti sebelumnya tapi versi simpel
+    // =========================
+    const audioBtn = document.getElementById("audioBtn");
+    let audioOn = false;
+    let audioCtx = null, master = null, lp = null, osc = null;
+
+    function startAudio(){
+      audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+      master = audioCtx.createGain();
+      master.gain.value = 0.0;
+      master.connect(audioCtx.destination);
+
+      // noise wind (lebih simple)
+      const bufferSize = 2 * audioCtx.sampleRate;
+      const buffer = audioCtx.createBuffer(1, bufferSize, audioCtx.sampleRate);
+      const data = buffer.getChannelData(0);
+      for (let i=0;i<bufferSize;i++) data[i] = Math.random() * 2 - 1;
+
+      const src = audioCtx.createBufferSource();
+      src.buffer = buffer;
+      src.loop = true;
+
+      lp = audioCtx.createBiquadFilter();
+      lp.type = "lowpass";
+      lp.frequency.value = 600;
+
+      const g1 = audioCtx.createGain();
+      g1.gain.value = 0.18;
+
+      src.connect(lp); lp.connect(g1); g1.connect(master);
+      src.start();
+
+      osc = audioCtx.createOscillator();
+      osc.type = "sine";
+      osc.frequency.value = 44;
+      const g2 = audioCtx.createGain();
+      g2.gain.value = 0.12;
+      osc.connect(g2); g2.connect(master);
+      osc.start();
+
+      master.gain.setTargetAtTime(0.75, audioCtx.currentTime, 0.25);
     }
+
+    function stopAudio(){
+      if (!audioCtx) return;
+      master.gain.setTargetAtTime(0.0, audioCtx.currentTime, 0.2);
+      setTimeout(() => { try { audioCtx.close(); } catch {} audioCtx = null; }, 400);
+    }
+
+    audioBtn.addEventListener("click", () => {
+      audioOn = !audioOn;
+      audioBtn.textContent = audioOn ? "Audio: ON" : "Audio: OFF";
+      if (audioOn) startAudio(); else stopAudio();
+    });
+
+    // =========================
+    // Horror loop
+    // =========================
+    const clock = new THREE.Clock();
+
+    function flickerCurve(t){
+      const s1 = Math.sin(t * 9.0) * 0.5 + 0.5;
+      const s2 = Math.sin(t * 31.0 + 1.7) * 0.5 + 0.5;
+      return (0.25 + 0.75 * (s1 * 0.6 + s2 * 0.4));
+    }
+
+    function animate(){
+      requestAnimationFrame(animate);
+      const t = clock.getElapsedTime();
+
+      // debug box rotate (biar kamu yakin ini jalan)
+      debugBox.rotation.y += 0.01;
+
+      const creep = Math.min(1, t / 10);
+      camera.position.z = 14 - creep * 5.8;
+      camera.lookAt(0, 0.9, 0);
+
+      const f = flickerCurve(t);
+      flicker.intensity = 14 + 30 * f;
+
+      // spike sesekali
+      const spike = (Math.sin(t * 0.9) > 0.995);
+      if (spike) {
+        flicker.intensity *= 0.15;
+        rgb.uniforms.amount.value = 0.006;
+        bloom.strength = 1.4;
+      } else {
+        rgb.uniforms.amount.value = 0.0018 + (1 - f) * 0.0012;
+        bloom.strength = 0.9 + (1 - f) * 0.25;
+      }
+
+      // fog “breath”
+      scene.fog.density = 0.05 + Math.sin(t * 0.32) * 0.008;
+
+      // audio reacts dikit
+      if (audioOn && audioCtx && lp && osc) {
+        lp.frequency.setTargetAtTime(520 + (1 - f) * 420, audioCtx.currentTime, 0.08);
+        osc.frequency.setTargetAtTime(42 + (1 - f) * 10, audioCtx.currentTime, 0.1);
+      }
+
+      composer.render();
+    }
+    animate();
   </script>
 </body>
 </html>
