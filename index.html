@@ -3,12 +3,11 @@
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width,initial-scale=1" />
-  <title>IS THIS KARMA? — Horror 3D</title>
+  <title>IS THIS KARMA? — Horror 3D (Rain + Lightning)</title>
 
   <style>
     html, body { margin: 0; height: 100%; background:#000; overflow:hidden; }
     canvas { display:block; }
-
     .hud{
       position: fixed; left: 0; top: 0; right: 0;
       display:flex; gap:10px; align-items:flex-start; justify-content:space-between;
@@ -37,7 +36,7 @@
       font-weight: 700;
     }
     .btn:active{ transform: translateY(1px); }
-    .small{ opacity:.65; font-size:11px; max-width: 62ch; }
+    .small{ opacity:.65; font-size:11px; max-width: 66ch; }
 
     #errorBox{
       position: fixed; left: 12px; right: 12px; bottom: 12px;
@@ -51,9 +50,17 @@
       display:none;
       z-index: 20;
     }
+
+    /* lightning overlay */
+    #flash{
+      position: fixed; inset: 0;
+      background: rgba(255,255,255,0);
+      pointer-events:none;
+      z-index: 5;
+      transition: background 0.05s linear;
+    }
   </style>
 
-  <!-- Importmap supaya "three" kebaca oleh addons/postprocessing -->
   <script type="importmap">
   {
     "imports": {
@@ -65,11 +72,13 @@
 </head>
 
 <body>
+  <div id="flash"></div>
+
   <div class="hud">
     <div class="pill">
       <div>
-        <div><b>IS THIS KARMA?</b> — realtime horror 3D</div>
-        <div class="small">Drag untuk ganggu kamera. Klik <b>Audio</b> untuk ambience.</div>
+        <div><b>IS THIS KARMA?</b> — horror 3D</div>
+        <div class="small">Drag untuk ganggu kamera. Petir & hujan jalan realtime.</div>
       </div>
     </div>
     <div class="pill">
@@ -94,6 +103,8 @@
 
     const errorBox = document.getElementById("errorBox");
     const statusEl = document.getElementById("status");
+    const flashEl = document.getElementById("flash");
+
     const showError = (msg) => {
       console.error(msg);
       errorBox.style.display = "block";
@@ -110,76 +121,126 @@
     renderer.setPixelRatio(Math.min(devicePixelRatio, 2));
     renderer.setSize(innerWidth, innerHeight);
     renderer.toneMapping = THREE.ACESFilmicToneMapping;
-    renderer.toneMappingExposure = 1.15; // ✅ naikkan biar tidak “mati”
+    renderer.toneMappingExposure = 1.05;
     renderer.outputColorSpace = THREE.SRGBColorSpace;
     document.body.appendChild(renderer.domElement);
 
     // =========================
-    // Scene / Camera
+    // Scene / Camera (✅ lebih jauh)
     // =========================
     const scene = new THREE.Scene();
     scene.background = new THREE.Color(0x000000);
-    scene.fog = new THREE.FogExp2(0x000000, 0.05); // ✅ lebih ringan dulu
+    scene.fog = new THREE.FogExp2(0x000000, 0.045);
 
-    const camera = new THREE.PerspectiveCamera(45, innerWidth / innerHeight, 0.1, 250);
-    camera.position.set(0, 2.0, 14);
+    const camera = new THREE.PerspectiveCamera(45, innerWidth / innerHeight, 0.1, 300);
+    // ✅ start lebih jauh
+    const camBase = new THREE.Vector3(0, 2.2, 22);
+    camera.position.copy(camBase);
 
     // =========================
-    // Lights (lebih kelihatan)
+    // Lights
     // =========================
-    scene.add(new THREE.AmbientLight(0x12121a, 0.45));
+    scene.add(new THREE.AmbientLight(0x0d0d14, 0.38));
 
-    const key = new THREE.SpotLight(0xaad6ff, 65, 120, Math.PI * 0.25, 0.35, 1.25);
-    key.position.set(6, 10, 11);
-    key.target.position.set(0, 1.1, 0);
+    const key = new THREE.SpotLight(0xaad6ff, 70, 160, Math.PI * 0.24, 0.35, 1.2);
+    key.position.set(9, 12, 16);
+    key.target.position.set(0, 1.3, 0);
     scene.add(key, key.target);
 
-    const back = new THREE.PointLight(0xff1218, 30, 90, 2);
-    back.position.set(-6, 2.5, -12);
+    const back = new THREE.PointLight(0xff1218, 26, 120, 2);
+    back.position.set(-10, 3.0, -18);
     scene.add(back);
 
-    const flicker = new THREE.PointLight(0xffcc88, 45, 80, 2);
-    flicker.position.set(0, 5.8, 8.5);
+    // Petir: light khusus (intensity di-animasi)
+    const lightning = new THREE.DirectionalLight(0xe6f3ff, 0);
+    lightning.position.set(8, 20, 10);
+    scene.add(lightning);
+
+    const flicker = new THREE.PointLight(0xffcc88, 35, 120, 2);
+    flicker.position.set(0, 6.2, 10.5);
     scene.add(flicker);
 
-    // Floor
+    // Floor (wet)
     const floor = new THREE.Mesh(
-      new THREE.PlaneGeometry(150, 150),
-      new THREE.MeshStandardMaterial({ color: 0x0a0a12, metalness: 0.1, roughness: 0.18 })
+      new THREE.PlaneGeometry(220, 220),
+      new THREE.MeshStandardMaterial({ color: 0x090912, metalness: 0.1, roughness: 0.18 })
     );
     floor.rotation.x = -Math.PI / 2;
-    floor.position.y = -1.25;
+    floor.position.y = -1.35;
     scene.add(floor);
 
-    // ✅ DEBUG: kotak terang supaya pasti kelihatan kalau render jalan
-    const debugBox = new THREE.Mesh(
-      new THREE.BoxGeometry(1, 1, 1),
-      new THREE.MeshStandardMaterial({ color: 0x00ff88, emissive: 0x00ff88, emissiveIntensity: 2 })
-    );
-    debugBox.position.set(-4.2, 1.0, 0);
-    scene.add(debugBox);
+    // =========================
+    // Rain 3D (✅ particle hujan)
+    // =========================
+    function makeRain(count = 9000) {
+      const geo = new THREE.BufferGeometry();
+      const pos = new Float32Array(count * 3);
+      const vel = new Float32Array(count);
+      for (let i = 0; i < count; i++) {
+        // spawn di box besar mengelilingi kamera/teks
+        pos[i*3+0] = (Math.random() - 0.5) * 80;
+        pos[i*3+1] = Math.random() * 35 + 2;      // dari atas
+        pos[i*3+2] = (Math.random() - 0.5) * 80;
+        vel[i] = 18 + Math.random() * 22;         // speed jatuh
+      }
+      geo.setAttribute("position", new THREE.BufferAttribute(pos, 3));
+      geo.setAttribute("velocity", new THREE.BufferAttribute(vel, 1));
+
+      // PointsMaterial yang “tajam”
+      const mat = new THREE.PointsMaterial({
+        color: 0xbfd7ff,
+        size: 0.055,
+        transparent: true,
+        opacity: 0.55,
+        depthWrite: false
+      });
+
+      const pts = new THREE.Points(geo, mat);
+      pts.frustumCulled = false;
+      return pts;
+    }
+    const rain = makeRain();
+    rain.position.y = 0;
+    scene.add(rain);
 
     // =========================
-    // Text group + placeholder terang
+    // Dust halus (opsional, bikin depth)
+    // =========================
+    function makeDust(count = 2200) {
+      const g = new THREE.BufferGeometry();
+      const pos = new Float32Array(count * 3);
+      const spd = new Float32Array(count);
+      for (let i = 0; i < count; i++) {
+        pos[i*3+0] = (Math.random() - 0.5) * 60;
+        pos[i*3+1] = Math.random() * 18 - 1.0;
+        pos[i*3+2] = (Math.random() - 0.5) * 60;
+        spd[i] = 0.10 + Math.random() * 0.45;
+      }
+      g.setAttribute("position", new THREE.BufferAttribute(pos, 3));
+      g.setAttribute("speed", new THREE.BufferAttribute(spd, 1));
+      const m = new THREE.PointsMaterial({ color: 0xffffff, size: 0.03, transparent: true, opacity: 0.35, depthWrite: false });
+      const p = new THREE.Points(g, m);
+      p.frustumCulled = false;
+      return p;
+    }
+    const dust = makeDust();
+    scene.add(dust);
+
+    // =========================
+    // Text + blood rim
     // =========================
     const group = new THREE.Group();
-    group.position.y = 0.35;
+    group.position.set(0, 0.4, 0);
     scene.add(group);
 
+    // placeholder biar pasti kelihatan walau font belum load
     const placeholder = new THREE.Mesh(
-      new THREE.BoxGeometry(7.2, 1.8, 0.5),
-      new THREE.MeshStandardMaterial({
-        color: 0x11111b,
-        metalness: 0.2,
-        roughness: 0.35,
-        emissive: 0x330008,
-        emissiveIntensity: 1.6
-      })
+      new THREE.BoxGeometry(10.5, 2.2, 0.7),
+      new THREE.MeshStandardMaterial({ color: 0x15151f, emissive: 0x2b0008, emissiveIntensity: 1.2, roughness: 0.35 })
     );
-    placeholder.position.y = 0.85;
+    placeholder.position.y = 1.05;
     group.add(placeholder);
 
-    // Fresnel glow (blood rim)
     const fresnelMat = new THREE.ShaderMaterial({
       transparent: true,
       depthWrite: false,
@@ -187,11 +248,10 @@
       uniforms: {
         uColor: { value: new THREE.Color(0xff0e12) },
         uPower: { value: 2.25 },
-        uIntensity: { value: 1.25 }
+        uIntensity: { value: 1.1 }
       },
       vertexShader: `
-        varying vec3 vN;
-        varying vec3 vV;
+        varying vec3 vN; varying vec3 vV;
         void main(){
           vec4 mv = modelViewMatrix * vec4(position, 1.0);
           vN = normalize(normalMatrix * normal);
@@ -200,11 +260,8 @@
         }
       `,
       fragmentShader: `
-        varying vec3 vN;
-        varying vec3 vV;
-        uniform vec3 uColor;
-        uniform float uPower;
-        uniform float uIntensity;
+        varying vec3 vN; varying vec3 vV;
+        uniform vec3 uColor; uniform float uPower; uniform float uIntensity;
         void main(){
           float fres = pow(1.0 - max(dot(vN, vV), 0.0), uPower);
           float a = fres * uIntensity;
@@ -213,36 +270,33 @@
       `
     });
 
-    // ✅ Font load (ini yang bikin teks muncul)
     const fontURL = "https://cdn.jsdelivr.net/npm/three@0.160.0/examples/fonts/helvetiker_bold.typeface.json";
-
     new FontLoader().load(
       fontURL,
       (font) => {
         statusEl.textContent = "Font loaded ✅";
-
         group.remove(placeholder);
 
         const geo = new TextGeometry("IS THIS KARMA?", {
           font,
-          size: 1.25,
-          height: 0.40,
+          size: 1.35,
+          height: 0.55,
           curveSegments: 14,
           bevelEnabled: true,
-          bevelThickness: 0.05,
-          bevelSize: 0.032,
-          bevelSegments: 6,
+          bevelThickness: 0.065,
+          bevelSize: 0.04,
+          bevelSegments: 7,
         });
         geo.center();
 
         const mat = new THREE.MeshPhysicalMaterial({
-          color: 0x0b0b14,
+          color: 0x0a0a12,
           metalness: 1.0,
-          roughness: 0.32,
+          roughness: 0.34,
           clearcoat: 0.25,
           clearcoatRoughness: 0.25,
-          emissive: new THREE.Color(0x220007),
-          emissiveIntensity: 1.0
+          emissive: new THREE.Color(0x2a000a),
+          emissiveIntensity: 0.95
         });
 
         const textMesh = new THREE.Mesh(geo, mat);
@@ -252,10 +306,11 @@
         glowMesh.scale.set(1.03, 1.03, 1.03);
         group.add(glowMesh);
 
-        group.rotation.set(THREE.MathUtils.degToRad(-2.5), THREE.MathUtils.degToRad(7), THREE.MathUtils.degToRad(1.2));
+        // uneasy tilt
+        group.rotation.set(THREE.MathUtils.degToRad(-2.2), THREE.MathUtils.degToRad(6.5), THREE.MathUtils.degToRad(1.1));
       },
       undefined,
-      (err) => showError("Gagal load font JSON.\nKemungkinan CDN keblok / offline.\n\n" + err)
+      (err) => showError("Gagal load font.\n" + err)
     );
 
     // =========================
@@ -264,18 +319,18 @@
     const composer = new EffectComposer(renderer);
     composer.addPass(new RenderPass(scene, camera));
 
-    const bloom = new UnrealBloomPass(new THREE.Vector2(innerWidth, innerHeight), 0.9, 0.7, 0.25);
+    const bloom = new UnrealBloomPass(new THREE.Vector2(innerWidth, innerHeight), 0.95, 0.75, 0.25);
     composer.addPass(bloom);
 
     const rgb = new ShaderPass(RGBShiftShader);
-    rgb.uniforms.amount.value = 0.0018;
+    rgb.uniforms.amount.value = 0.0016;
     composer.addPass(rgb);
 
-    const film = new FilmPass(0.25, 0.35, 720, false);
+    const film = new FilmPass(0.22, 0.35, 720, false);
     composer.addPass(film);
 
     // =========================
-    // Interaction (drag)
+    // Interaction
     // =========================
     let isDown = false, mx = 0, my = 0;
     addEventListener("pointerdown", (e) => { isDown = true; mx = e.clientX; my = e.clientY; });
@@ -286,7 +341,7 @@
       const dy = (e.clientY - my) / innerHeight;
       mx = e.clientX; my = e.clientY;
       camera.position.x += dx * 2.0;
-      camera.position.y -= dy * 1.5;
+      camera.position.y -= dy * 1.2;
     });
 
     addEventListener("resize", () => {
@@ -297,7 +352,7 @@
     });
 
     // =========================
-    // Audio (optional) — sama seperti sebelumnya tapi versi simpel
+    // Audio opsional (simple ambience)
     // =========================
     const audioBtn = document.getElementById("audioBtn");
     let audioOn = false;
@@ -309,19 +364,16 @@
       master.gain.value = 0.0;
       master.connect(audioCtx.destination);
 
-      // noise wind (lebih simple)
       const bufferSize = 2 * audioCtx.sampleRate;
       const buffer = audioCtx.createBuffer(1, bufferSize, audioCtx.sampleRate);
       const data = buffer.getChannelData(0);
       for (let i=0;i<bufferSize;i++) data[i] = Math.random() * 2 - 1;
-
       const src = audioCtx.createBufferSource();
-      src.buffer = buffer;
-      src.loop = true;
+      src.buffer = buffer; src.loop = true;
 
       lp = audioCtx.createBiquadFilter();
       lp.type = "lowpass";
-      lp.frequency.value = 600;
+      lp.frequency.value = 560;
 
       const g1 = audioCtx.createGain();
       g1.gain.value = 0.18;
@@ -333,7 +385,7 @@
       osc.type = "sine";
       osc.frequency.value = 44;
       const g2 = audioCtx.createGain();
-      g2.gain.value = 0.12;
+      g2.gain.value = 0.10;
       osc.connect(g2); g2.connect(master);
       osc.start();
 
@@ -353,45 +405,112 @@
     });
 
     // =========================
-    // Horror loop
+    // Lightning system (petir)
+    // =========================
+    let nextLightningAt = 2 + Math.random() * 4;
+    let lightningPhase = 0; // 0 idle, >0 flash time
+
+    function triggerLightning(){
+      // flash sequence (double flash)
+      lightningPhase = 0.22; // durasi total
+      // overlay flash putih tipis
+      flashEl.style.background = "rgba(230,245,255,0.28)";
+      setTimeout(() => flashEl.style.background = "rgba(230,245,255,0)", 60);
+    }
+
+    // =========================
+    // Animation loop
     // =========================
     const clock = new THREE.Clock();
 
     function flickerCurve(t){
       const s1 = Math.sin(t * 9.0) * 0.5 + 0.5;
       const s2 = Math.sin(t * 31.0 + 1.7) * 0.5 + 0.5;
-      return (0.25 + 0.75 * (s1 * 0.6 + s2 * 0.4));
+      return (0.28 + 0.72 * (s1 * 0.6 + s2 * 0.4));
     }
 
     function animate(){
       requestAnimationFrame(animate);
       const t = clock.getElapsedTime();
+      const dt = Math.min(0.033, clock.getDelta());
 
-      // debug box rotate (biar kamu yakin ini jalan)
-      debugBox.rotation.y += 0.01;
+      // Kamera creep (tetap jauh)
+      const creep = Math.min(1, t / 12);
+      camera.position.z = camBase.z - creep * 6.0; // pelan mendekat dikit
+      camera.lookAt(0, 1.05, 0);
 
-      const creep = Math.min(1, t / 10);
-      camera.position.z = 14 - creep * 5.8;
-      camera.lookAt(0, 0.9, 0);
-
+      // Flicker lampu utama
       const f = flickerCurve(t);
-      flicker.intensity = 14 + 30 * f;
+      flicker.intensity = 18 + 34 * f;
 
-      // spike sesekali
-      const spike = (Math.sin(t * 0.9) > 0.995);
-      if (spike) {
-        flicker.intensity *= 0.15;
-        rgb.uniforms.amount.value = 0.006;
-        bloom.strength = 1.4;
-      } else {
-        rgb.uniforms.amount.value = 0.0018 + (1 - f) * 0.0012;
-        bloom.strength = 0.9 + (1 - f) * 0.25;
+      // Rain update (jatuh + reset)
+      const a = rain.geometry.attributes;
+      const p = a.position.array;
+      const v = a.velocity.array;
+      for (let i = 0; i < v.length; i++) {
+        p[i*3+1] -= v[i] * dt;           // jatuh
+        p[i*3+0] += Math.sin(t*0.4 + i) * 0.002; // drift angin tipis
+        p[i*3+2] += Math.cos(t*0.35 + i) * 0.002;
+        if (p[i*3+1] < -2.0) {
+          p[i*3+1] = 34 + Math.random() * 10;   // reset ke atas
+          p[i*3+0] = (Math.random() - 0.5) * 80;
+          p[i*3+2] = (Math.random() - 0.5) * 80;
+        }
+      }
+      a.position.needsUpdate = true;
+
+      // Dust float
+      const da = dust.geometry.attributes;
+      const dp = da.position.array;
+      const ds = da.speed.array;
+      for (let i = 0; i < ds.length; i++) {
+        dp[i*3+1] += ds[i] * dt * 0.35;
+        if (dp[i*3+1] > 18) dp[i*3+1] = -1.0;
+      }
+      da.position.needsUpdate = true;
+
+      // Text breathing (3D)
+      group.position.y = 0.4 + Math.sin(t * 0.7) * 0.04;
+      group.rotation.y += Math.sin(t * 5.0) * 0.0006;
+
+      // Fog breath
+      scene.fog.density = 0.045 + Math.sin(t * 0.25) * 0.008;
+
+      // ===== Lightning timing =====
+      if (t > nextLightningAt) {
+        triggerLightning();
+        nextLightningAt = t + 3 + Math.random() * 6;
       }
 
-      // fog “breath”
-      scene.fog.density = 0.05 + Math.sin(t * 0.32) * 0.008;
+      if (lightningPhase > 0) {
+        lightningPhase -= dt;
 
-      // audio reacts dikit
+        // intensity curve (double hit)
+        const pulse = (lightningPhase > 0.12)
+          ? 1.0
+          : (lightningPhase > 0.08 ? 0.2 : (lightningPhase > 0.03 ? 0.85 : 0.0));
+
+        lightning.intensity = 8.0 * pulse;
+
+        // boost post FX saat petir
+        bloom.strength = 0.95 + pulse * 1.2;
+        rgb.uniforms.amount.value = 0.0016 + pulse * 0.006;
+
+        // rim glow naik saat petir
+        fresnelMat.uniforms.uIntensity.value = 1.1 + pulse * 1.3;
+
+        // sedikit shake saat petir
+        camera.position.x += (Math.random() - 0.5) * 0.06 * pulse;
+        camera.position.y += (Math.random() - 0.5) * 0.04 * pulse;
+
+      } else {
+        lightning.intensity = 0;
+        bloom.strength = 0.95 + (1 - f) * 0.15;
+        rgb.uniforms.amount.value = 0.0016 + (1 - f) * 0.0012;
+        fresnelMat.uniforms.uIntensity.value = 1.1 + (1 - f) * 0.6;
+      }
+
+      // Audio react
       if (audioOn && audioCtx && lp && osc) {
         lp.frequency.setTargetAtTime(520 + (1 - f) * 420, audioCtx.currentTime, 0.08);
         osc.frequency.setTargetAtTime(42 + (1 - f) * 10, audioCtx.currentTime, 0.1);
@@ -399,6 +518,7 @@
 
       composer.render();
     }
+
     animate();
   </script>
 </body>
